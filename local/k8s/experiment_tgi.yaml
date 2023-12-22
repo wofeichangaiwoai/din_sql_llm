@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: data-tooling
+  name: colossal-ai-tgi
+  labels:
+    app: colossal-ai-tgi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: colossal-ai-tgi
+  template:
+    metadata:
+      labels:
+        app: colossal-ai-tgi
+    spec:
+      volumes:
+        - name: colossal-ai-data
+          persistentVolumeClaim:
+            claimName: colossal-ai-data
+        - name: cache-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+      containers:
+        - name: colossal-ai-tgi
+          image: 882490700787.dkr.ecr.us-east-1.amazonaws.com/colossalai:tgi_image
+          ports:
+            - containerPort: 5000
+            - containerPort: 8888
+            - containerPort: 7860
+            - containerPort: 8000
+            - containerPort: 80
+          command: ["/bin/sh"]
+          args: ["-c", "./start_tgi.sh"]
+          env:
+            - name: VERSION
+              value: v0.3.0
+            - name: max_input_length
+              value: "10000"
+            - name: max_total_tokens
+              value: "10240"              
+          resources:
+            limits:
+              cpu: '8'
+              memory: 64Gi
+              nvidia.com/gpu: '2'
+            requests:
+              cpu: '8'
+              memory: 64Gi
+              nvidia.com/gpu: '2'
+          volumeMounts:
+            - name: colossal-ai-data
+              mountPath: /Workspace
+            - name: cache-volume
+              mountPath: /dev/shm
+          imagePullPolicy: IfNotPresent
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: karpenter.sh/provisioner-name
+                    operator: In
+                    values:
+                      - gpu
+      tolerations:
+        - key: nvidia/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+---
+#apiVersion: networking.k8s.io/v1
+#kind: Ingress
+#metadata:
+#  labels:
+#    app: colossal-ai-tgi
+#  name: colossal-ai-tgi
+#  annotations:
+#    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+#    nginx.ingress.kubernetes.io/use-regex: "true"
+#    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#    cert-manager.io/cluster-issuer: letsencrypt-production
+#  namespace: data-tooling
+#spec:
+#  ingressClassName: nginx
+#  rules:
+#    - host: colossal-llm-api.home-dev.ubix.io
+#      http:
+#        paths:
+#          - path: /
+#            pathType: Prefix
+#            backend:
+#              service:
+#                name: colossal-ai-tgi
+#                port:
+#                  number: 8080
+#    - host: colossal-llm-gradio.home-dev.ubix.io
+#      http:
+#        paths:
+#          - path: /
+#            pathType: Prefix
+#            backend:
+#              service:
+#                name: colossal-ai-tgi
+#                port:
+#                  number: 7860
+#    - host: embed-api.home-dev.ubix.io
+#      http:
+#        paths:
+#          - path: /
+#            pathType: Prefix
+#            backend:
+#              service:
+#                name: colossal-ai-tgi
+#                port:
+#                  number: 8000
+#  tls:
+#    - hosts:
+#        - colossal-llm-api.home-dev.ubix.io
+#        - colossal-llm-gradio.home-dev.ubix.io
+#        - embed-api.home-dev.ubix.io
+#      secretName: colossal-ai-tls
+#
+#---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: colossal-ai-tgi
+  name: colossal-ai-tgi
+  namespace: data-tooling
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: tgi-web
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    - name: embed-web
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    - name: tgi-gradio
+      port: 7860
+      protocol: TCP
+      targetPort: 7860
+  selector:
+    app: colossal-ai-tgi
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}
+
+
+# k port-forward colossal-ai-tgi  8080:8080  -n data-tooling
+
+# sudo kubefwd svc -l "app in (colossal-ai-tgi, trino)" -n data-tooling
+
+# kdd tgi && k apply -f  ./local/k8s/experiment_tgi.yaml -n data-tooling
+
+# http://colossal-ai-tgi:7860

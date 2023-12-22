@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: data-tooling
+  name: colossal-ai-tgi
+  labels:
+    app: colossal-ai-tgi
+spec:
+  volumes:
+    - name: colossal-ai-data
+      persistentVolumeClaim:
+        claimName: colossal-ai-data
+    - name: cache-volume
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+  containers:
+    - name: colossal-ai-tgi
+      image: 882490700787.dkr.ecr.us-east-1.amazonaws.com/colossalai:tgi_image
+      ports:
+        - containerPort: 5000
+        - containerPort: 8888
+        - containerPort: 7860
+        - containerPort: 8000
+        - containerPort: 80
+      command: ["/bin/sh"]
+      args: ["-c", "./start_tgi.sh"]
+      env:
+        - name: VERSION
+          value: v0.3.0
+        - name: max_input_length
+          value: "4000"
+      resources:
+        limits:
+          cpu: '8'
+          memory: 64Gi
+          nvidia.com/gpu: '2'
+        requests:
+          cpu: '8'
+          memory: 64Gi
+          nvidia.com/gpu: '2'
+      volumeMounts:
+        - name: colossal-ai-data
+          mountPath: /Workspace
+        - name: cache-volume
+          mountPath: /dev/shm
+      imagePullPolicy: IfNotPresent
+  nodeSelector:
+    karpenter.sh/provisioner-name: gpu-temp
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: karpenter.sh/provisioner-name
+                operator: In
+                values:
+                  - gpu-temp
+  tolerations:
+    - key: nvidia.com/gpu-temp
+      operator: Equal
+      value: 'true'
+      effect: NoSchedule

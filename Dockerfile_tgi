@@ -1,0 +1,12 @@
+FROM ghcr.io/huggingface/text-generation-inference:1.0.3
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && apt upgrade -y && \
+    apt install -yqq iputils-ping telnet wget vim git curl
+
+WORKDIR /workspace
+COPY ./ ./
+RUN pip install -r requirements_tgi.txt
+
+WORKDIR /workspace
+CMD tail -f /dev/null
